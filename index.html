@@ -59,17 +59,24 @@ const myL=()=>S.lotes.find(l=>l.e===S.me.e);
 const loteG=l=>S.movs.filter(m=>m.l===l.id);
 function vEsc(m){const u=S.me;
 if(u.r==="Administrador"){m.innerHTML=`<div class="card">El administrador consulta y edita. Los escaneos los hacen los usuarios Motorizado y Tienda.</div>`;return}
-if(u.r==="Motorizado"&&!S.v){m.innerHTML=`<div class="card"><h2>Iniciar jornada</h2><p class="mut">Elige tu vehículo de hoy. Se usará en todos tus escaneos.</p><select id="vh">${S.veh.map(v=>`<option value="${v.id}">${esc(v.n)}</option>`).join("")}</select><button onclick="run('jornada',{v:$('#vh').value})">Iniciar jornada</button></div>`;return}
-const ub=u.r==="Motorizado"?"Vehículo: "+vn(S.v):"Sucursal: "+sn(u.s),l=myL();
-if(!l){m.innerHTML=`<div class="card"><h3>${esc(ub)}</h3><p class="mut">Abre un lote, escanea las guías una tras otra y ciérralo al terminar.</p><button onclick="run('newLote')">Nuevo lote</button>${u.r==="Motorizado"?`<button class="s" onclick="S.v='';render()">Cambiar vehículo</button>`:""}</div>`;return}
+if(!S.v||!S.vp){vJor(m);return}
+const ub=(S.vp.k==="m"?"Movilidad: ":S.vp.k==="t"?"Tienda: ":"")+S.vp.n,l=myL();
+if(!l){m.innerHTML=`<div class="card"><h3>${esc(ub)}</h3><p class="mut">Abre un lote, escanea las guías una tras otra y ciérralo al terminar.</p><button onclick="run('newLote')">Nuevo lote</button><button class="s" onclick="S.v='';render()">Cambiar ubicación</button></div>`;return}
 m.innerHTML=`<div class="card"><h3>${esc(ub)}</h3><div class="big" id="cnt">0</div><div class="mut" style="text-align:center">guías escaneadas en este lote</div>
 <button id="cb" onclick="cam()">Activar cámara</button><button class="s" onclick="$('#ph').click()">Escanear con foto</button><input id="ph" type="file" accept="image/*" capture="environment" hidden onchange="foto(this)"><div id="reader"></div>
 <div style="display:flex;gap:8px;margin-top:8px"><input id="mg" placeholder="O escribe la guía"><button style="width:90px;margin:0" onclick="add($('#mg').value);$('#mg').value=''">Agregar</button></div></div>
 <div class="card"><div id="chips"></div><button class="k" onclick="close_()">Cerrar lote</button></div>`;upd()}
+const dk=()=>window._jk||(S.me.r==="Motorizado"?"V":"T");
+function setK(k){window._jk=k;render()}
+function vJor(m){const k=dk(),B=(x,t)=>`<button class="${k===x?"":"s"}" style="margin:0" onclick="setK('${x}')">${t}</button>`;
+const L=k==="T"?S.suc:S.veh;
+const sel=k==="O"?`<input id="jv" maxlength="40" placeholder="¿Dónde estás? (ej. Almacén, Oficina)">`:L.length?`<select id="jv">${L.map(x=>`<option value="${x.id}"${x.id===S.me.s?" selected":""}>${esc(x.n)}</option>`).join("")}</select>`:`<p class="warn">No hay ${k==="T"?"tiendas":"movilidades"} registradas. Usa Otros o pide al administrador que las agregue.</p>`;
+m.innerHTML=`<div class="card"><h2>Iniciar jornada</h2><p class="mut">¿Dónde vas a trabajar? Se usará en todos tus escaneos.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">${B("T","Tienda")}${B("V","Movilidad")}${B("O","Otros")}</div>${sel}<button onclick="ini()">Iniciar jornada</button></div>`}
+function ini(){const e=$("#jv");const v=e?e.value.trim():"";if(!v){toast("Elige o escribe una opción");return}run("jornada",{k:dk(),v})}
 function upd(){const l=myL();if(!l||!$("#cnt"))return;const g=loteG(l);$("#cnt").textContent=g.length;$("#chips").innerHTML=g.slice().reverse().map(x=>`<span class="chip">${esc(x.g)}</span>`).join("")||'<span class="mut">Aún no hay guías.</span>'}
 function add(g){g=String(g||"").trim();const l=myL();if(!g||!l)return;
 if(S.movs.some(x=>x.l===l.id&&x.g===g)){toast("Ya escaneada en este lote: "+g);return}
-const u=S.me,mv={id:"t"+Date.now(),g,t:Date.now(),e:u.e,n:u.n,r:u.r,l:l.id,ub:u.r==="Motorizado"?vn(S.v):sn(u.s),p:pos?pos.split(", ").map(Number):null};
+const u=S.me,mv={id:"t"+Date.now(),g,t:Date.now(),e:u.e,n:u.n,r:u.r,l:l.id,ub:S.vp.n,k:S.vp.k,p:pos?pos.split(", ").map(Number):null};
 S.movs.push(mv);beep();upd();
 api("scan",{l:l.id,g}).catch(e=>{S.movs=S.movs.filter(x=>x!==mv);upd();fail(e)})}
 async function cam(){if(qr){stopCam();return}
@@ -79,14 +86,15 @@ function stopCam(){if(qr){const q=qr;qr=null;q.stop().then(()=>q.clear()).catch(
 async function foto(i){const f=i.files[0];i.value="";if(!f)return;if(!window.Html5Qrcode){toast("Lector no disponible");return}try{const q=new Html5Qrcode("reader");const t=await q.scanFile(f,false);add(t);try{q.clear()}catch(e){}}catch(e){toast("No se leyó ningún QR. Acércate e inténtalo de nuevo.")}}
 function close_(){const l=myL(),n=loteG(l).length;if(!n){toast("El lote no tiene guías");return}
 if(confirm("Vas a cerrar el lote con "+n+" guías. ¿Confirmas?")){stopCam();run("close",{l:l.id})}}
-function card(x,adm){return`<div class="tl"><b>${fmt(x.t)}</b> · ${esc(x.n)} <span class="chip">${x.r}</span><br>${x.r==="Motorizado"?"En movilidad":"En tienda"}: ${esc(x.ub)}${x.p?` · <a class="map" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${x.p[0]},${x.p[1]}">Ver ubicación</a>`:""}${adm&&x.id.length>3?` · <a href="#" class="map" onclick="delM('${x.id}');return false">Eliminar</a>`:""}</div>`}
+const kl=x=>x.k==="m"?"En movilidad":x.k==="o"?"Otros":"En tienda";
+function card(x,adm){return`<div class="tl"><b>${fmt(x.t)}</b> · ${esc(x.n)} <span class="chip">${x.r}</span><br>${kl(x)}: ${esc(x.ub)}${x.p?` · <a class="map" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${x.p[0]},${x.p[1]}">Ver ubicación</a>`:""}${adm&&x.id.length>3?` · <a href="#" class="map" onclick="delM('${x.id}');return false">Eliminar</a>`:""}</div>`}
 function delM(id){if(confirm("¿Eliminar este registro?"))run("delMov",{id})}
 function vCon(m){m.innerHTML=`<div class="card"><h2>Consultar guía</h2><input id="q" placeholder="Número de guía" oninput="rq()" value="${esc(window._q||"")}"></div><div id="res"></div>`;rq()}
 function rq(){const q=($("#q").value||"").trim();window._q=q;const r=$("#res");if(!q){r.innerHTML='<p class="mut">Escribe un número de guía para ver quién la tuvo y a qué hora.</p>';return}
 const by={};S.movs.filter(x=>x.g.includes(q)).sort((a,b)=>a.t-b.t).forEach(x=>(by[x.g]=by[x.g]||[]).push(x));const k=Object.keys(by);
 r.innerHTML=k.length?k.map(g=>`<div class="card"><h3>Guía ${esc(g)}</h3>${by[g].map(x=>card(x,S.me.r==="Administrador")).join("")}</div>`).join(""):'<p class="mut">No hay registros para esa guía.</p>'}
 function vDon(m){const last={};S.movs.forEach(x=>{if(!last[x.g]||x.t>last[x.g].t)last[x.g]=x});const a=Object.values(last).sort((x,y)=>y.t-x.t);
-m.innerHTML=`<h2>Dónde está cada guía</h2>`+(a.map(x=>{const h=Math.round((Date.now()-x.t)/36e5),w=x.r==="Motorizado"&&h>24;return`<div class="card"><b>${esc(x.g)}</b> <span class="chip">${x.r==="Motorizado"?"En movilidad":"En tienda"}</span><br>${esc(x.ub)} · ${esc(x.n)}<br><span class="mut">${fmt(x.t)}</span> ${w?`<span class="warn">· ${h} h sin movimiento</span>`:""}</div>`}).join("")||'<p class="mut">Todavía no hay guías registradas.</p>')}
+m.innerHTML=`<h2>Dónde está cada guía</h2>`+(a.map(x=>{const h=Math.round((Date.now()-x.t)/36e5),w=x.k==="m"&&h>24;return`<div class="card"><b>${esc(x.g)}</b> <span class="chip">${kl(x)}</span><br>${esc(x.ub)} · ${esc(x.n)}<br><span class="mut">${fmt(x.t)}</span> ${w?`<span class="warn">· ${h} h sin movimiento</span>`:""}</div>`}).join("")||'<p class="mut">Todavía no hay guías registradas.</p>')}
 function vAdm(m){const R=["Motorizado","Tienda","Administrador"];
 m.innerHTML=`<h2>Administración</h2><div class="card"><h3>Lotes abiertos (${S.lotes.length})</h3>${S.lotes.map(l=>`<div>${fmt(l.t)} · ${esc(l.n)} · ${S.movs.filter(x=>x.l===l.id).length} guías</div>`).join("")||'<span class="mut">Ninguno.</span>'}</div>
 <div class="card"><h3>Usuarios</h3>${S.users.map((u,i)=>`<div style="margin:8px 0"><b>${esc(u.n)}</b> <span class="mut">${esc(u.e)}</span><div style="display:flex;gap:6px;margin-top:4px"><select onchange="setR(${i},this.value)">${R.map(r=>`<option${r===u.r?" selected":""}>${r}</option>`).join("")}</select><button class="d" style="width:80px;margin:0" onclick="delU(${i})">Quitar</button></div></div>`).join("")}
